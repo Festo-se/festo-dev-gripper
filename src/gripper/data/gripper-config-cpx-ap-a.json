@@ -1,0 +1,90 @@
+{
+    "_comment": "Festo CPX-AP-A pneumatic gripper control example. Spec 3.0 with device descriptor file reference.",
+    "spec_version": "3.0",
+    "system_config": {
+        "metadata": {}
+    },
+    "component_config": {
+        "metadata": {},
+        "components": {
+            "gripper_cpx_ap_a": {
+                "_comment": "CPX-AP-A pneumatic gripper module. Firmware controlled via XML device descriptor. Mounted on gantry Z-axis.",
+                "component_spec_version": "2.0",
+                "component_class": "gripper",
+                "uuid": "0000-000000000-000000-102",
+                "type": "parallel",
+                "positioning": ["discrete", {"positions": 2}],
+                "control_signal": "digital",
+                "tool_id": 2,
+                "mount_gantry": {
+                    "name": "gantry_1",
+                    "uuid": "0000-000000000-000000-200"
+                },
+                "mount_axis": {
+                    "name": "Z",
+                    "index": 2,
+                    "uuid": "0000-000000000-000000-202"
+                },
+                "mount_axis_control": {
+                    "type": "CODESYS-PLC",
+                    "control_mode": "python",
+                    "control_package": "festo-applied-motion",
+                    "control_library": "applied_motion",
+                    "control_module": "Gantry",
+                    "control_backend": "fposbapi_client",
+                    "index": 2
+                },
+                "control_mode": "python",
+                "control_library": "cpx_ap",
+                "control_system": "cpx_system",
+                "control_bus": "cpx_ap_a",
+                "control_backend": "tcp/ip",
+                "control_signal_module": {
+                    "e8do": "CpxE8Do"
+                },
+                "control_modules": {
+                    "controller": {
+                        "control_library": "cpx_ap",
+                        "control_system": "cpx_system",
+                        "control_bus": "cpx_ap_a",
+                        "control_module": {"cpx_ap_a": "CpxApA"},
+                        "ip": "192.168.0.41",
+                        "modules": [
+                            {"eep": "CpxEEp"},
+                            {"ap_a": "CpxApA"}
+                        ]
+                    },
+                    "gripper_control": {
+                        "type": "pneumatic",
+                        "passed-by-init": false,
+                        "name": "cpx_ap_a",
+                        "control_library": "cpx_ap",
+                        "control_module": "CpxApA",
+                        "device_descriptor_file": "descriptors/CPX-AP-A.xml",
+                        "device_descriptor_url": "https://festo-repo.local/descriptors/cpx-ap-a/v1.0/CPX-AP-A.xml",
+                        "uuid": 2,
+                        "interface": {
+                            "type": "tcp/ip",
+                            "ip": "192.168.0.41",
+                            "port": 502
+                        }
+                    }
+                },
+                "control_signal_channels": {
+                    "grip": 1,
+                    "release": 0
+                },
+                "sensor": {
+                    "type": "switch",
+                    "control_signal_module": {
+                        "e16di": "CpxE16Di"
+                    },
+                    "control_signal_channels": {
+                        "grip": 0,
+                        "release": 1
+                    }
+                }
+            }
+        }
+    }
+}

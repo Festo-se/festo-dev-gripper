@@ -1,0 +1,69 @@
+[project]
+name = "festo-dev-gripper"
+version = "0.2.0"
+authors = [{ "name" = "Kyle Wardlow", "email" = "kyle.wardlow@festo.com" }]
+description = "Reference implementation of controls for a digital-IO-based Festo parallel gripper using the festo-cpx-io library"
+
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+keywords = ["Festo", "Digital", "Parallel", "Gripper"]
+readme = { file = "README.md", content-type = "text/markdown" }
+requires-python = ">=3.10"
+dependencies = ["festo-cpx-io>=0.11.1"]
+
+[build-system]
+requires = ["uv_build>=0.7.17,<0.11"]
+build-backend = "uv_build"
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true } }]
+
+[dependency-groups]
+dev = ["pytest>=8.0.0", "pytest-cov>=6.0.0", "pytest-mock>=3.14.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "hardware: marks tests that require connected hardware (deselect with -m 'not hardware')",
+]
+
+[tool.uv.build-backend]
+module-name = "gripper"
+
+[tool.ruff]
+line-length = 120
+indent-width = 4
+target-version = "py310"
+src = ["src", "examples"]
+exclude = [
+    "**/.git",
+    "**/__pycache__",
+    "**/.vscode",
+    "**/.venv",
+    "**/.pytest_cache",
+    "**/tests",
+    "**/pyproject.toml",
+]
+fix = true
+show-fixes = true
+
+[tool.ruff.lint]
+select = ["D", "E4", "E7", "E9", "F", "C901", "B", "S"]
+ignore = ["D203", "D212"]
+exclude = ["tests/*"]
+
+[tool.ruff.lint.per-file-ignores]
+# Ignore D100 and D104 in all __init__.py files
+"__init__.py" = ["D100", "D104"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+indent-style = "space"
+quote-style = "double"
+line-ending = "auto"

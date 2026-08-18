@@ -1,0 +1,114 @@
+# This workflow will upload a Python Package to PyPI when a release is created
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python#publishing-to-package-registries
+
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+name: "Publish Release"
+
+on:
+  push:
+    tags:
+      - "*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish (e.g. 1.2.3)"
+        required: true
+        type: string
+
+# default: least privileged permissions across all jobs
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-release-${{ inputs.tag || github.ref_name }}
+      cancel-in-progress: false
+
+    permissions:
+      contents: write
+    steps:
+      - name: Setup | Checkout Repository on Release Branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+      - name: Install Python 3.14
+        run: uv python install 3.14
+      - name: Build
+        run: uv build
+      - name: Upload | Distribution Artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: distribution-artifacts
+          path: dist
+          if-no-files-found: error
+
+  github-release:
+    name: "Upload artifacts to GitHub Release"
+    runs-on: ubuntu-latest
+    needs: release
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download distribution artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: distribution-artifacts
+          path: dist
+
+      # CHANGELOG.md was already updated and committed to main by the tag job
+      # in test.yml before this tag was pushed.  Run git-cliff here only to
+      # produce the release body text — no file write or commit needed.
+      - name: Generate release body from changelog
+        uses: orhun/git-cliff-action@v4
+        id: changelog
+        with:
+          config: cliff.toml
+          args: --latest --strip header
+
+      - name: Create GitHub Release and upload artifacts
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          body: ${{ steps.changelog.outputs.content }}
+          files: dist/*
+          fail_on_unmatched_files: true
+
+  deploy:
+    # 1. Separate out the deploy step from the publish step to run each step at
+    #    the least amount of token privilege
+    # 2. Also, deployments can fail, and its better to have a separate job if you need to retry
+    #    and it won't require reversing the release.
+    environment:
+      name: pypi
+    runs-on: ubuntu-latest
+    needs: release
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Setup | Download Build Artifacts
+        uses: actions/download-artifact@v8
+        id: artifact-download
+        with:
+          name: distribution-artifacts
+          path: dist
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          print-hash: true
+          verbose: true
