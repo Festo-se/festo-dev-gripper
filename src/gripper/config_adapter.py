@@ -145,6 +145,9 @@ class GripperConfigAdapter:
 
         # Validate signal channels
         channels = gripper_config["control_signal_channels"]
+        self._validate_signal_channels(channels)
+
+    def _validate_signal_channels(self, channels: Any) -> None:
         if not isinstance(channels, dict):
             raise ConfigValidationError("control_signal_channels must be a dict")
         if "grip" not in channels or "release" not in channels:
