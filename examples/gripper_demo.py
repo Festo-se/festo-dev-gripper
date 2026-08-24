@@ -7,17 +7,15 @@ Run only with a safe, connected gripper::
 
     GRIPPER_CPX_IP=192.168.0.2 python examples/gripper_demo.py
 
-Output channels use ``grip=1`` and ``release=0``. Sensor inputs use
-``grip=0`` and ``release=1`` on ``CpxE16Di``.
+Output channels use ``grip=1`` and ``release=0``.
 """
+# Sensor inputs use ``grip=0`` and ``release=1`` on ``CpxE16Di``.
 
 import os
-from importlib import import_module
 from pathlib import Path
 from pprint import pprint
 import logging
 
-from gripper.config_adapter import load_config
 from gripper.gripper import Gripper
 
 log_level = os.getenv("LOG_LEVEL", "DEBUG").upper()
@@ -31,41 +29,41 @@ pprint(CONFIG_PATH)
 
 
 def main() -> None:
-    """Load controller classes from config, then run one grip/release cycle."""
-    ip_address = os.getenv("GRIPPER_CPX_IP", "192.168.0.2")
-    config = load_config(CONFIG_PATH)
-    pprint(config)
-    gripper_component_config = config["components"]["gripper_standalone"]
-    pprint(gripper_component_config)
-    controller = gripper_component_config["control_modules"]["controller"]
-    pprint(controller)
-    package = ".".join(
-        (
-            controller["control_library"],
-            controller["control_system"],
-            controller["control_bus"],
-        )
-    )
+    """Run safe release, grip, final-release cycle on configured hardware."""
 
-    controller_module_name, controller_class_name = next(iter(controller["control_module"].items()))
-    controller_class = getattr(import_module(f"{package}.{controller_module_name}"), controller_class_name)
-    modules = []
+    def report(label: str, gripper: Gripper) -> None:
+        status = gripper.get_status()
+        if status.code == 2:
+            raise RuntimeError(f"Contradictory sensor status after {label}")
+        print(f"{label}: {status.get_position()}")
 
-    for module_spec in controller["modules"]:
-        module_name, module_class_name = next(iter(module_spec.items()))
-        module_class = getattr(import_module(f"{package}.{module_name}"), module_class_name)
-        modules.append(module_class())
-    control_signal_module_index = controller["modules"].index(gripper_component_config["control_signal_module"])
-    control = controller_class(ip_address=ip_address, modules=modules)
-    gripper = Gripper(control.modules[control_signal_module_index], config)
-
-    try:
+    with Gripper.from_config(CONFIG_PATH, component_name="gripper_standalone") as gripper:
         gripper.release()
-        print(f"released: {gripper.get_status().get_position()}")
+        report("released", gripper)
         gripper.grip()
-        print(f"gripped: {gripper.get_status().get_position()}")
-    finally:
-        control.shutdown()
+        report("gripped", gripper)
+        gripper.release()
+        report("released", gripper)
+        gripper.grip()
+        report("gripped", gripper)
+        gripper.release()
+        report("released", gripper)
+        gripper.grip()
+        report("gripped", gripper)
+        gripper.release()
+        report("released", gripper)
+        gripper.grip()
+        report("gripped", gripper)
+        gripper.release()
+        report("released", gripper)
+        gripper.grip()
+        report("gripped", gripper)
+        gripper.release()
+        report("released", gripper)
+        gripper.grip()
+        report("gripped", gripper)
+        gripper.release()
+        report("released", gripper)
 
 
 if __name__ == "__main__":
