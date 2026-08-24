@@ -13,7 +13,12 @@
                 "component_class": "gripper",
                 "uuid": "0000-000000000-000000-100",
                 "type": "parallel",
-                "positioning": ["discrete", {"positions": 2}],
+                "positioning": [
+                    "discrete",
+                    {
+                        "positions": 2
+                    }
+                ],
                 "control_signal": "digital",
                 "control_mode": "python",
                 "control_library": "cpx_io",
@@ -28,14 +33,26 @@
                         "control_library": "cpx_io",
                         "control_system": "cpx_system",
                         "control_bus": "cpx_e",
-                        "control_module": {"cpx_e": "CpxE"},
-                        "controller": {"eep": "CpxEEp"},
-                        "ip": "192.168.0.41",
+                        "control_module": {
+                            "cpx_e": "CpxE"
+                        },
+                        "controller": {
+                            "eep": "CpxEEp"
+                        },
+                        "ip": "192.168.0.2",
                         "modules": [
-                            {"eep": "CpxEEp"},
-                            {"e16di": "CpxE16Di"},
-                            {"e8do": "CpxE8Do"},
-                            {"e4iol": "CpxE4Iol"}
+                            {
+                                "eep": "CpxEEp"
+                            },
+                            {
+                                "e16di": "CpxE16Di"
+                            },
+                            {
+                                "e8do": "CpxE8Do"
+                            },
+                            {
+                                "e4iol": "CpxE4Iol"
+                            }
                         ]
                     }
                 },
@@ -60,7 +77,12 @@
                 "component_class": "gripper",
                 "uuid": "0000-000000000-000000-101",
                 "type": "parallel",
-                "positioning": ["discrete", {"positions": 2}],
+                "positioning": [
+                    "discrete",
+                    {
+                        "positions": 2
+                    }
+                ],
                 "control_signal": "digital",
                 "tool_id": 1,
                 "mount_gantry": {
@@ -94,14 +116,26 @@
                         "control_library": "cpx_io",
                         "control_system": "cpx_system",
                         "control_bus": "cpx_e",
-                        "control_module": {"cpx_e": "CpxE"},
-                        "controller": {"eep": "CpxEEp"},
-                        "ip": "192.168.0.41",
+                        "control_module": {
+                            "cpx_e": "CpxE"
+                        },
+                        "controller": {
+                            "eep": "CpxEEp"
+                        },
+                        "ip": "192.168.0.2",
                         "modules": [
-                            {"eep": "CpxEEp"},
-                            {"e16di": "CpxE16Di"},
-                            {"e8do": "CpxE8Do"},
-                            {"e4iol": "CpxE4Iol"}
+                            {
+                                "eep": "CpxEEp"
+                            },
+                            {
+                                "e16di": "CpxE16Di"
+                            },
+                            {
+                                "e8do": "CpxE8Do"
+                            },
+                            {
+                                "e4iol": "CpxE4Iol"
+                            }
                         ]
                     }
                 },
