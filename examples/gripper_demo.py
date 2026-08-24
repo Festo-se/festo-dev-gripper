@@ -5,7 +5,7 @@
 
 Run only with a safe, connected gripper::
 
-    GRIPPER_CPX_IP=192.168.0.41 python examples/gripper_demo.py
+    GRIPPER_CPX_IP=192.168.0.2 python examples/gripper_demo.py
 
 Output channels use ``grip=1`` and ``release=0``. Sensor inputs use
 ``grip=0`` and ``release=1`` on ``CpxE16Di``.
@@ -14,19 +14,31 @@ Output channels use ``grip=1`` and ``release=0``. Sensor inputs use
 import os
 from importlib import import_module
 from pathlib import Path
+from pprint import pprint
+import logging
 
 from gripper.config_adapter import load_config
 from gripper.gripper import Gripper
 
+log_level = os.getenv("LOG_LEVEL", "DEBUG").upper()
+logging.basicConfig(level=log_level)
+
+logging.info("This will now print!")
+logging.debug("This will only print if LOG_LEVEL=DEBUG")
 
 CONFIG_PATH = Path(__file__).parents[1] / "src/gripper/data/gripper-config.json"
+pprint(CONFIG_PATH)
 
 
 def main() -> None:
     """Load controller classes from config, then run one grip/release cycle."""
-    ip_address = os.getenv("GRIPPER_CPX_IP", "192.168.0.41")
+    ip_address = os.getenv("GRIPPER_CPX_IP", "192.168.0.2")
     config = load_config(CONFIG_PATH)
-    controller = config["components"]["controller"]
+    pprint(config)
+    gripper_component_config = config["components"]["gripper_standalone"]
+    pprint(gripper_component_config)
+    controller = gripper_component_config["control_modules"]["controller"]
+    pprint(controller)
     package = ".".join(
         (
             controller["control_library"],
@@ -38,13 +50,14 @@ def main() -> None:
     controller_module_name, controller_class_name = next(iter(controller["control_module"].items()))
     controller_class = getattr(import_module(f"{package}.{controller_module_name}"), controller_class_name)
     modules = []
+
     for module_spec in controller["modules"]:
         module_name, module_class_name = next(iter(module_spec.items()))
         module_class = getattr(import_module(f"{package}.{module_name}"), module_class_name)
         modules.append(module_class())
-
+    control_signal_module_index = controller["modules"].index(gripper_component_config["control_signal_module"])
     control = controller_class(ip_address=ip_address, modules=modules)
-    gripper = Gripper(control, config)
+    gripper = Gripper(control.modules[control_signal_module_index], config)
 
     try:
         gripper.release()
