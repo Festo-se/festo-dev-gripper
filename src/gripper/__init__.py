@@ -3,6 +3,6 @@
 
 __copyright__ = "Copyright (c) 2026 Festo SE & Co. KG"
 
-__all__ = ["Gripper"]
+__all__ = ["Gripper", "GripperFactoryError", "GripperSensor", "GripperStatus"]
 
-from gripper.gripper import Gripper
+from gripper.gripper import Gripper, GripperFactoryError, GripperSensor, GripperStatus

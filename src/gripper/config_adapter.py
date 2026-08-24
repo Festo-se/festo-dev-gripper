@@ -34,12 +34,13 @@ class GripperConfigAdapter:
     NEW_FORMAT_VERSION = "3.0"
     COMPONENT_SPEC_VERSION = "2.0"
 
-    def __init__(self, config: Union[Dict[str, Any], str, Path]) -> None:
+    def __init__(self, config: Union[Dict[str, Any], str, Path], component_name: str | None = None) -> None:
         """
         Load config from dict, JSON file, or path string.
 
         Args:
             config: Config dict, file path (str/Path), or JSON content string
+            component_name: Optional named gripper component selector
 
         Raises:
             ConfigValidationError: Schema validation fails
@@ -50,6 +51,7 @@ class GripperConfigAdapter:
             config = self._load_json_file(config)
 
         self.raw_config = config
+        self.component_name = component_name
         self.is_new_schema = self._detect_schema_version()
         logger.debug("Detected gripper config schema: new=%s", self.is_new_schema)
 
@@ -146,12 +148,7 @@ class GripperConfigAdapter:
             logger.error("Spec 3.0 gripper components are not a dict")
             raise ConfigValidationError("component_config.components must be a dict")
 
-        # Find first gripper component and validate it
-        gripper_config = None
-        for _, comp_spec in components.items():
-            if comp_spec.get("component_class") == "gripper":
-                gripper_config = comp_spec
-                break
+        gripper_config = self._select_gripper_component(components)
 
         if not gripper_config:
             logger.error("Spec 3.0 gripper component not found")
@@ -170,6 +167,7 @@ class GripperConfigAdapter:
         # Validate signal channels
         channels = gripper_config["control_signal_channels"]
         self._validate_signal_channels(channels)
+        self._validate_component_mappings(gripper_config)
         logger.debug("Spec 3.0 gripper config validation completed")
 
     def _validate_signal_channels(self, channels: Any) -> None:
@@ -180,10 +178,42 @@ class GripperConfigAdapter:
         if "grip" not in channels or "release" not in channels:
             logger.error("Gripper control signal channels missing grip or release")
             raise ConfigValidationError("control_signal_channels must have 'grip' and 'release' keys")
-        if not isinstance(channels["grip"], int) or not isinstance(channels["release"], int):
+        if type(channels["grip"]) is not int or type(channels["release"]) is not int:
             logger.error("Gripper control signal channels have invalid types")
             raise ConfigValidationError("grip/release channels must be integers")
+        if channels["grip"] == channels["release"]:
+            raise ConfigValidationError("grip and release channels must be distinct")
         logger.debug("Gripper control signal channel validation completed")
+
+    def _validate_component_mappings(self, gripper_config: Dict[str, Any]) -> None:
+        """Validate dynamic-import metadata without importing any hardware code."""
+        output = gripper_config.get("control_signal_module")
+        if output is not None:
+            self._validate_single_mapping(output, "control_signal_module")
+
+        control_modules = gripper_config.get("control_modules")
+        if control_modules is None:
+            return
+        if not isinstance(control_modules, dict) or not isinstance(control_modules.get("controller"), dict):
+            raise ConfigValidationError("Gripper control_modules.controller must be a mapping")
+        controller = control_modules["controller"]
+        for field in ("control_library", "control_system", "control_bus", "ip"):
+            if field in controller and not isinstance(controller[field], str):
+                raise ConfigValidationError(f"controller.{field} must be a string")
+        if "control_module" in controller:
+            self._validate_single_mapping(controller["control_module"], "control_module")
+        if "controller" in controller:
+            self._validate_single_mapping(controller["controller"], "controller")
+        modules = controller.get("modules")
+        if modules is not None and not isinstance(modules, list):
+            raise ConfigValidationError("controller.modules must be a list")
+        for module in modules or []:
+            self._validate_single_mapping(module, "controller.modules item")
+
+    @staticmethod
+    def _validate_single_mapping(value: Any, field: str) -> None:
+        if not isinstance(value, dict) or len(value) != 1:
+            raise ConfigValidationError(f"{field} must contain exactly one item")
 
     def _translate_spec_3_0_to_legacy(self) -> Dict[str, Any]:
         """Translate spec 3.0 config to old Python dict format."""
@@ -192,10 +222,7 @@ class GripperConfigAdapter:
         components = self._get_nested(self.raw_config, ("component_config", "components"))
         gripper_config = None
 
-        for _, comp_spec in components.items():
-            if comp_spec.get("component_class") == "gripper":
-                gripper_config = comp_spec
-                break
+        gripper_config = self._select_gripper_component(components)
 
         if not gripper_config:
             logger.error("Spec 3.0 gripper component missing during translation")
@@ -219,6 +246,28 @@ class GripperConfigAdapter:
         }
         logger.debug("Spec 3.0 gripper config translation completed")
         return translated
+
+    def _select_gripper_component(self, components: Dict[str, Any]) -> Dict[str, Any]:
+        """Select one named gripper, or the sole gripper when unnamed."""
+        grippers = {
+            name: spec
+            for name, spec in components.items()
+            if isinstance(spec, dict) and spec.get("component_class") == "gripper"
+        }
+        if self.component_name is not None:
+            if self.component_name not in grippers:
+                raise ConfigValidationError(
+                    f"Unknown gripper component: {self.component_name}"
+                )
+            return grippers[self.component_name]
+        if not grippers:
+            raise ConfigValidationError("No component with component_class='gripper' found")
+        if len(grippers) != 1:
+            raise ConfigValidationError(
+                "Gripper component selector is required when config contains "
+                f"{len(grippers)} gripper components"
+            )
+        return next(iter(grippers.values()))
 
     @staticmethod
     def _extract_controller_config(gripper_config: Dict[str, Any]) -> Dict[str, Any]:
@@ -255,7 +304,7 @@ class GripperConfigAdapter:
         return result
 
 
-def load_config(config_path: Union[str, Path]) -> Dict[str, Any]:
+def load_config(config_path: Union[str, Path], component_name: str | None = None) -> Dict[str, Any]:
     """
     Load config file (spec 3.0 or legacy) and return normalized dict.
 
@@ -263,6 +312,7 @@ def load_config(config_path: Union[str, Path]) -> Dict[str, Any]:
 
     Args:
         config_path: Path to JSON or Python dict config
+        component_name: Optional named gripper component selector
 
     Returns:
         Config dict in legacy format (compatible with existing code)
@@ -272,7 +322,7 @@ def load_config(config_path: Union[str, Path]) -> Dict[str, Any]:
         FileNotFoundError: Config file not found
     """
     logger.info("Gripper config load requested: path=%s", config_path)
-    adapter = GripperConfigAdapter(config_path)
+    adapter = GripperConfigAdapter(config_path, component_name=component_name)
     config = adapter.get_gripper_config()
     logger.info("Gripper config load completed: new_schema=%s", adapter.is_new_schema)
     return config

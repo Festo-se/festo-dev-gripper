@@ -32,7 +32,7 @@ from gripper.gripper import Gripper
 # ---------------------------------------------------------------------------
 # Defaults taken from festo-dev-gripper/src/gripper/test_config.py
 # ---------------------------------------------------------------------------
-_DEFAULT_CPX_IP = "192.168.0.41"
+_DEFAULT_CPX_IP = "192.168.0.2"
 _DEFAULT_GRIP_CHANNEL = 1
 _DEFAULT_RELEASE_CHANNEL = 0
 _CPX_PORT = 502

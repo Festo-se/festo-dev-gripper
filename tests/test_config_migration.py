@@ -5,15 +5,14 @@
 
 import json
 import pytest
-from pathlib import Path
 from types import SimpleNamespace
 
-from src.gripper.config_adapter import (
+from gripper.config_adapter import (
     GripperConfigAdapter,
     ConfigValidationError,
     load_config,
 )
-from src.gripper.gripper import Gripper
+from gripper.gripper import Gripper
 
 
 class TestConfigAdapter:

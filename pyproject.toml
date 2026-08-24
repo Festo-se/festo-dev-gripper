@@ -1,6 +1,6 @@
 [project]
 name = "festo-dev-gripper"
-version = "0.2.0"
+version = "0.3.0"
 authors = [{ "name" = "Kyle Wardlow", "email" = "kyle.wardlow@festo.com" }]
 description = "Reference implementation of controls for a digital-IO-based Festo parallel gripper using the festo-cpx-io library"
 
@@ -13,9 +13,7 @@ classifiers = [
 keywords = ["Festo", "Digital", "Parallel", "Gripper"]
 readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
-dependencies = [
-    "festo-cpx-io[cli]>=0.11.1",
-]
+dependencies = ["festo-cpx-io[cli]>=0.11.1"]
 
 [build-system]
 requires = ["uv_build>=0.7.17,<0.11"]
