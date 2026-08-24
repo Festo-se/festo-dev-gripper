@@ -256,16 +256,13 @@ class GripperConfigAdapter:
         }
         if self.component_name is not None:
             if self.component_name not in grippers:
-                raise ConfigValidationError(
-                    f"Unknown gripper component: {self.component_name}"
-                )
+                raise ConfigValidationError(f"Unknown gripper component: {self.component_name}")
             return grippers[self.component_name]
         if not grippers:
             raise ConfigValidationError("No component with component_class='gripper' found")
         if len(grippers) != 1:
             raise ConfigValidationError(
-                "Gripper component selector is required when config contains "
-                f"{len(grippers)} gripper components"
+                f"Gripper component selector is required when config contains {len(grippers)} gripper components"
             )
         return next(iter(grippers.values()))
 
