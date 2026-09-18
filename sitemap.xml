@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+    <url>
+         <loc>https://festo-se.github.io/festo-dev-gripper/</loc>
+         <lastmod>2026-09-18</lastmod>
+    </url>
+    <url>
+         <loc>https://festo-se.github.io/festo-dev-gripper/examples/</loc>
+         <lastmod>2026-09-18</lastmod>
+    </url>
+    <url>
+         <loc>https://festo-se.github.io/festo-dev-gripper/autoapi/summary/</loc>
+         <lastmod>2026-09-18</lastmod>
+    </url>
+    <url>
+         <loc>https://festo-se.github.io/festo-dev-gripper/autoapi/gripper/</loc>
+         <lastmod>2026-09-18</lastmod>
+    </url>
+    <url>
+         <loc>https://festo-se.github.io/festo-dev-gripper/autoapi/gripper/config_adapter/</loc>
+         <lastmod>2026-09-18</lastmod>
+    </url>
+    <url>
+         <loc>https://festo-se.github.io/festo-dev-gripper/autoapi/gripper/gripper/</loc>
+         <lastmod>2026-09-18</lastmod>
+    </url>
+    <url>
+         <loc>https://festo-se.github.io/festo-dev-gripper/autoapi/gripper/test_config/</loc>
+         <lastmod>2026-09-18</lastmod>
+    </url>
+</urlset>
