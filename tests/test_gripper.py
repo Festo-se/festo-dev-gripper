@@ -3,6 +3,7 @@
 
 """Unit tests for dependency-injected gripper control."""
 
+import json
 from types import SimpleNamespace
 from unittest.mock import Mock
 from pathlib import Path
@@ -160,6 +161,14 @@ def test_multiple_sensor_modules_are_rejected(control, config):
         Gripper(control, config)
 
 
+def test_close_does_not_close_injected_control(control, config):
+    gripper = Gripper(control, config)
+
+    gripper.close()
+
+    control.shutdown.assert_not_called()
+
+
 # def test_status_accessors_return_constructor_values():
 #     """Status accessors expose values supplied during construction."""
 #     status = GripperStatus(7, "custom-grip", "custom-motion", "custom-position")
@@ -192,6 +201,8 @@ def test_factory_routes_sensor_reads_to_configured_input_module(monkeypatch, tmp
     input_module = Mock()
     input_module.name = "e16di"
     input_module.read_channel.side_effect = [False, True]
+    construction_order = []
+    import_paths = []
 
     class Output:
         name = "e8do"
@@ -206,28 +217,36 @@ def test_factory_routes_sensor_reads_to_configured_input_module(monkeypatch, tmp
         def __init__(self, **kwargs):
             self.modules = kwargs["modules"]
             self.shutdown = Mock()
+            self.ip_address = kwargs["ip_address"]
 
-    class Module:
+    class Eep:
         def __init__(self):
-            self.name = "module"
+            construction_order.append("eep")
+            self.name = "eep"
+
+    class E4Iol:
+        def __init__(self):
+            construction_order.append("e4iol")
+            self.name = "e4iol"
 
     output = Output()
 
     def fake_import(name):
+        import_paths.append(name)
         module = Mock()
         if name.endswith(".cpx_e"):
             module.CpxE = Controller
         elif name.endswith(".e16di"):
-            module.CpxE16Di = lambda: input_module
+            module.CpxE16Di = lambda: construction_order.append("e16di") or input_module
         elif name.endswith(".e8do"):
-            module.CpxE8Do = lambda: output
+            module.CpxE8Do = lambda: construction_order.append("e8do") or output
         elif name.endswith(".eep"):
-            module.CpxEEp = Module
+            module.CpxEEp = Eep
         elif name.endswith(".e4iol"):
-            module.CpxE4Iol = Module
+            module.CpxE4Iol = E4Iol
         return module
 
-    monkeypatch.setattr("gripper.gripper.import_module", fake_import)
+    monkeypatch.setattr("configurator.kernel.import_module", fake_import)
     config_path = tmp_path / "gripper.json"
     config_path.write_text(json.dumps(config))
 
@@ -237,8 +256,60 @@ def test_factory_routes_sensor_reads_to_configured_input_module(monkeypatch, tmp
 
     assert status.get_position() == "open"
     assert gripper.sensor.module is input_module
+    assert construction_order == ["eep", "e16di", "e8do", "e4iol"]
+    assert [module.name for module in controller.modules] == ["eep", "e16di", "e8do", "e4iol"]
+    assert controller.ip_address == "192.168.0.2"
+    assert all(path.startswith("cpx_io.") for path in import_paths)
+    with gripper:
+        pass
     gripper.close()
     controller.shutdown.assert_called_once()
+
+
+def test_factory_partial_failure_closes_control_once(monkeypatch, tmp_path):
+    from configurator import BuilderError
+    from gripper.gripper import GripperFactoryError
+
+    controls = []
+
+    class Controller:
+        def __init__(self, **kwargs):
+            self.modules = kwargs["modules"]
+            self.shutdown = Mock()
+            controls.append(self)
+
+    class Input:
+        name = "e16di"
+
+    monkeypatch.setattr(
+        "configurator.kernel.import_module",
+        lambda _: SimpleNamespace(CpxE=Controller, CpxE16Di=Input),
+    )
+    source = {
+        "components": {
+            "controller": {
+                "control_library": "cpx_io",
+                "control_system": "cpx_system",
+                "control_bus": "cpx_e",
+                "control_module": {"cpx_e": "CpxE"},
+                "modules": [{"e16di": "CpxE16Di"}],
+            },
+            "gripper": {
+                "control_signal_channels": {"grip": 1, "release": 0},
+                "control_signal_module": {"missing": "MissingOutput"},
+            },
+        }
+    }
+    config_path = tmp_path / "partial.json"
+    config_path.write_text(json.dumps(source))
+
+    with pytest.raises(GripperFactoryError) as error:
+        Gripper.from_config(config_path)
+
+    assert isinstance(error.value.__cause__, BuilderError)
+    assert "Configured output module not found" in str(error.value.__cause__.cause)
+    assert len(controls) == 1
+    controls[0].shutdown.assert_called_once()
 
 
 def test_duplicate_output_channels_are_rejected(control, config):

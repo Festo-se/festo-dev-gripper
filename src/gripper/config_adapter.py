@@ -3,10 +3,11 @@
 
 """Config adapter for backward compatibility and schema validation."""
 
-import json
 import logging
 from pathlib import Path
 from typing import Any, Dict, Union
+
+from configurator import SourceError, load_source
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class GripperConfigAdapter:
 
         self.raw_config = config
         self.component_name = component_name
+        self.selected_component_name: str | None = None
         self.is_new_schema = self._detect_schema_version()
         logger.debug("Detected gripper config schema: new=%s", self.is_new_schema)
 
@@ -77,16 +79,13 @@ class GripperConfigAdapter:
     def _load_json_file(path: Union[str, Path]) -> Dict[str, Any]:
         """Load and parse JSON file."""
         logger.debug("JSON gripper config load started: path=%s", path)
-        path = Path(path)
-        if not path.exists():
-            logger.error("Gripper config file not found: path=%s", path)
-            raise FileNotFoundError(f"Config file not found: {path}")
         try:
-            with open(path, "r") as f:
-                config = json.load(f)
-                logger.debug("Gripper config file loaded: path=%s", path)
-                return config
-        except json.JSONDecodeError as e:
+            config, _ = load_source(path)
+            logger.debug("Gripper config file loaded: path=%s", path)
+            return config
+        except SourceError as e:
+            if isinstance(e.cause, FileNotFoundError):
+                raise FileNotFoundError(f"Config file not found: {path}") from e
             logger.error("Invalid gripper config JSON: path=%s", path)
             raise ConfigValidationError(f"Invalid JSON in {path}: {e}") from e
 
@@ -257,6 +256,7 @@ class GripperConfigAdapter:
         if self.component_name is not None:
             if self.component_name not in grippers:
                 raise ConfigValidationError(f"Unknown gripper component: {self.component_name}")
+            self.selected_component_name = self.component_name
             return grippers[self.component_name]
         if not grippers:
             raise ConfigValidationError("No component with component_class='gripper' found")
@@ -264,31 +264,20 @@ class GripperConfigAdapter:
             raise ConfigValidationError(
                 f"Gripper component selector is required when config contains {len(grippers)} gripper components"
             )
-        return next(iter(grippers.values()))
+        self.selected_component_name = next(iter(grippers))
+        return grippers[self.selected_component_name]
 
     @staticmethod
     def _extract_controller_config(gripper_config: Dict[str, Any]) -> Dict[str, Any]:
         """Extract controller config from gripper's control_modules."""
         logger.debug("Controller config extraction started")
         control_modules = gripper_config.get("control_modules", {})
-        controller = control_modules.get("controller", {})
-        control_system = controller.get("control_system", "cpx_system")
-        control_bus = controller.get("control_bus")
-        if control_bus is None and "." in control_system:
-            control_system, control_bus = control_system.split(".", 1)
-
-        # Return controller with defaults if not present
-        controller_config = {
-            "control_library": controller.get("control_library", "cpx_io"),
-            "control_system": control_system,
-            "control_bus": control_bus or "cpx_e",
-            "control_module": controller.get("control_module", {"cpx_e": "CpxE"}),
-            "controller": controller.get("controller", {"eep": "CpxEEp"}),
-            "ip": controller.get("ip", "192.168.0.41"),
-            "modules": controller.get("modules", []),
-        }
-        logger.debug("Controller config extraction completed: module_count=%s", len(controller_config["modules"]))
-        return controller_config
+        controller = dict(control_modules.get("controller", {}))
+        control_system = controller.get("control_system")
+        if controller.get("control_bus") is None and isinstance(control_system, str) and "." in control_system:
+            controller["control_system"], controller["control_bus"] = control_system.split(".", 1)
+        logger.debug("Controller config extraction completed: module_count=%s", len(controller.get("modules", [])))
+        return controller
 
     @staticmethod
     def _get_nested(d: Dict[str, Any], path: tuple) -> Any:

@@ -4,11 +4,11 @@
 """Dependency-injected digital I/O control and status models for grippers."""
 
 import logging
-import os
-from importlib import import_module
 import time
+from collections.abc import Mapping
+from typing import Any
 
-from gripper.config_adapter import ConfigValidationError, GripperConfigAdapter
+from gripper.config_adapter import ConfigValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -128,7 +128,7 @@ class Gripper:
     ``sensors via digital input``. Constructor does not create or close hardware resources.
     """
 
-    def __init__(self, control, config: dict, component_name: str | None = None, sensor_control=None):
+    def __init__(self, control, config: Mapping[str, Any], component_name: str | None = None, sensor_control=None):
         """Initialize gripper from normalized legacy-compatible config.
 
         Args:
@@ -155,7 +155,7 @@ class Gripper:
         if self.grip_channel == self.release_channel:
             raise ValueError("grip and release channels must be distinct")
         self._owned_control = None
-        self._sensor_control = sensor_control
+        self._sensor_control = sensor_control or control
         self.sensor = self._build_sensor(self._sensor_control)
         logger.info(
             "Gripper initialized: grip_channel=%s release_channel=%s sensor=%s",
@@ -166,46 +166,23 @@ class Gripper:
 
     @classmethod
     def from_config(cls, source, component_name: str | None = None, ip_address: str | None = None):
-        """Construct gripper and CPX modules from Spec 3.0 configuration."""
+        """Delegate legacy or Spec 3.0 configuration to the configurator bootstrap."""
         ## TODO: AP module has autorecognition, so explicit IOs are not clear except from some kind of info or other config. Need this to bootstrap and understand system topology of actuators, sensors, etc.
         # TODO: COnfig options: AP still positional in terms of IO modules, this is how the config shuold be structured, avoid hardcoding indices for controls
         # TODO: Map :  cpx.module[index].set_channel(other index) -> human understandable methods/verbs
 
-        adapter = GripperConfigAdapter(source, component_name=component_name)
-        config = adapter.get_gripper_config()
-        controller = config["components"]["controller"]
-        package = ".".join((controller["control_library"], controller["control_system"], controller["control_bus"]))
-        selected = config["components"]["gripper"]
+        from gripper.bootstrap import bootstrap_gripper
+        from configurator import BuilderError, ConfiguratorError, ValidationError
+
         try:
-            module_specs = controller["modules"]
-            modules = [cls._instantiate_module(package, spec) for spec in module_specs]
-            controller_spec = controller["control_module"]
-            controller_module, controller_class = cls._single_mapping(controller_spec, "control_module")
-            controller_type = getattr(import_module(f"{package}.{controller_module}"), controller_class)
-            address = ip_address or os.getenv("GRIPPER_CPX_IP") or controller.get("ip", "192.168.0.2")
-            base = controller_type(ip_address=address, modules=modules)
-            output_name, output_class = cls._single_mapping(
-                selected.get("control_signal_module", {}), "control_signal_module"
-            )
-            output = next(
-                (
-                    module
-                    for module in base.modules
-                    if type(module).__name__ == output_class or getattr(module, "name", None) == output_name
-                ),
-                None,
-            )
-            if output is None:
-                raise GripperFactoryError(f"Configured output module not found: {output_class}")
-            result = cls(output, config, component_name=component_name, sensor_control=base)
-            result._owned_control = base
-            return result
-        except Exception as exc:
-            if "base" in locals() and hasattr(base, "shutdown"):
-                base.shutdown()
-            if isinstance(exc, (ConfigValidationError, GripperFactoryError, ValueError, KeyError)):
-                raise
-            raise GripperFactoryError(f"Unable to construct configured gripper: {exc}") from exc
+            return bootstrap_gripper(source, component_name=component_name, ip_address=ip_address)
+        except ValidationError as exc:
+            cause = exc.cause
+            if isinstance(cause, ConfigValidationError):
+                raise cause from exc
+            raise ConfigValidationError(str(exc)) from exc
+        except (BuilderError, ConfiguratorError) as exc:
+            raise GripperFactoryError(str(exc)) from exc
 
     @staticmethod
     def _single_mapping(value, field):
@@ -213,14 +190,17 @@ class Gripper:
             raise ValueError(f"{field} must contain exactly one item")
         return next(iter(value.items()))
 
-    @classmethod
-    def _instantiate_module(cls, package, spec):
-        name, class_name = cls._single_mapping(spec, "module")
-        module_type = getattr(import_module(f"{package}.{name}"), class_name)
-        return module_type()
-
     def close(self):
         """Shut down CPX control when factory created it."""
+        result = getattr(self, "_bootstrap_result", None)
+        if result is not None:
+            self._bootstrap_result = None
+            result.close()
+            return
+        self._close_owned_control()
+
+    def _close_owned_control(self):
+        """Close only the CPX control created by the gripper factory."""
         if self._owned_control is not None:
             control, self._owned_control = self._owned_control, None
             control.shutdown()
