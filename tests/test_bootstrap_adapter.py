@@ -73,6 +73,14 @@ def test_selected_spec_view_is_validated():
     validate_gripper_view(view)
 
 
+def test_mapping_controller_modules_are_validated_in_insertion_order():
+    modules = {"eep": "CpxEEp", "e16di": "CpxE16Di", "e8do": "CpxE8Do"}
+    data = _component()
+    data["control_modules"]["controller"]["modules"] = modules
+
+    validate_gripper_view(_view(data))
+
+
 @pytest.mark.parametrize(
     "change",
     [

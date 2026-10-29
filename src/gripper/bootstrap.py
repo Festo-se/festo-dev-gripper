@@ -87,11 +87,17 @@ def _validate_controller_mapping(control_modules: Any) -> None:
     for field in ("control_module", "controller"):
         if field in controller:
             _single_mapping(controller[field], f"controller.{field}")
-    modules = controller.get("modules", [])
-    if not isinstance(modules, list):
-        raise ConfigValidationError("controller.modules must be a list")
-    for module in modules:
+    for module in _controller_module_specs(controller.get("modules", [])):
         _single_mapping(module, "controller.modules item")
+
+
+def _controller_module_specs(value: Any) -> list[Mapping[str, Any]]:
+    """Normalize legacy ordered module mappings and list declarations."""
+    if isinstance(value, Mapping):
+        return [{name: selected} for name, selected in value.items()]
+    if isinstance(value, list):
+        return value
+    raise ConfigValidationError("controller.modules must be a list or mapping")
 
 
 def _validate_controller_ip(controller: Mapping[str, Any]) -> None:
@@ -199,7 +205,7 @@ def build_gripper_view(
     control = None
     try:
         modules = []
-        for module_spec in controller.get("modules", []):
+        for module_spec in _controller_module_specs(controller.get("modules", [])):
             submodule, class_name = _single_mapping(module_spec, "controller.modules item")
             modules.append(module_resolver.resolve(("cpx_io", *base, submodule), class_name)())
         controller_submodule, controller_class = _single_mapping(controller.get("control_module"), "control_module")
