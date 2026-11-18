@@ -7,52 +7,33 @@
 Run only with safe hardware connected:
 
 ```bash
-GRIPPER_CPX_IP=192.168.0.41 python examples/gripper_demo.py
+GRIPPER_CPX_IP=192.168.0.2 python examples/gripper_demo.py
 ```
 
-Core pattern:
+Core pattern using the canonical, managed configurator bootstrap:
 
 ```python
-import os
-from importlib import import_module
 from pathlib import Path
 
-from gripper.config_adapter import load_config
-from gripper.gripper import Gripper
+from configurator import Configurator, Registry
+from gripper.bootstrap import gripper_registration
 
-config = load_config(Path("src/gripper/data/gripper-config.json"))
-controller = config["components"]["controller"]
-package = ".".join(
-    (
-        controller["control_library"],
-        controller["control_system"],
-        controller["control_bus"],
-    )
-)
-
-module_name, class_name = next(iter(controller["control_module"].items()))
-controller_class = getattr(import_module(f"{package}.{module_name}"), class_name)
-modules = []
-for module_spec in controller["modules"]:
-    module_name, class_name = next(iter(module_spec.items()))
-    module_class = getattr(import_module(f"{package}.{module_name}"), class_name)
-    modules.append(module_class())
-
-control_class = controller_class
-control = control_class(
-    ip_address=os.getenv("GRIPPER_CPX_IP", controller["ip"]),
-    modules=modules,
-)
-gripper = Gripper(control, config)
-
-try:
+with Configurator.bootstrap(
+    Path("src/gripper/data/gripper-config.json"),
+    "gripper_standalone",
+    Registry.compose(gripper_registration()),
+    options={"legacy_component_types": {"gripper_standalone": "gripper"}},
+) as result:
+    gripper = result.instance
     gripper.release()
     print(gripper.get_status().get_position())
     gripper.grip()
     print(gripper.get_status().get_position())
-finally:
-    control.shutdown()
 ```
+
+`Gripper.from_config` and `load_config` remain compatibility delegates for one
+release cycle. New config-driven consumers should call `Configurator.bootstrap`
+with an explicit gripper registration as shown above.
 
 Configuration selects output and sensor modules:
 

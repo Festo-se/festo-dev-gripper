@@ -15,12 +15,15 @@ readme = { file = "README.md", content-type = "text/markdown" }
 requires-python = ">=3.10"
 dependencies = [
     "festo-cpx-io[cli]>=0.11.1",
-    "festo-dev-configurator>=0.1.0",
+    "festo-dev-configurator>=0.2.0",
 ]
 
 [build-system]
 requires = ["uv_build>=0.7.17,<0.11"]
 build-backend = "uv_build"
+
+[project.entry-points."festo_dev_configurator.providers"]
+gripper = "gripper.bootstrap:gripper_registration"
 
 [tool.uv]
 cache-keys = [{ file = "pyproject.toml" }, { git = { commit = true } }]

@@ -10,8 +10,9 @@ from pathlib import Path
 
 import pytest
 
+from configurator import SourceError
 from gripper.gripper import Gripper, GripperSensor, GripperStatus
-from gripper.config_adapter import GripperConfigAdapter
+from gripper.config_adapter import ConfigValidationError, GripperConfigAdapter
 
 
 @pytest.fixture
@@ -169,6 +170,55 @@ def test_close_does_not_close_injected_control(control, config):
     control.shutdown.assert_not_called()
 
 
+def test_injected_control_accepts_normalized_component_config(control, config):
+    """Direct injection normalizes the configurator's component_config wrapper."""
+    wrapped = {"component_config": config}
+
+    gripper = Gripper(control, json.dumps(wrapped))
+
+    assert gripper.grip_channel == 1
+    assert gripper.release_channel == 0
+
+
+def test_injected_control_loads_config_from_path(control, config, tmp_path):
+    """Direct injection uses configurator loading for JSON file sources."""
+    source = tmp_path / "gripper.json"
+    source.write_text(json.dumps(config), encoding="utf-8")
+
+    gripper = Gripper(control, source)
+
+    assert gripper.grip_channel == 1
+    assert gripper.release_channel == 0
+
+
+def test_injected_control_selects_requested_component(control, config):
+    """Direct injection uses the explicit component name, not a fallback entry."""
+    config["components"]["secondary"] = {
+        "control_signal_channels": {"grip": 3, "release": 2},
+    }
+
+    gripper = Gripper(control, config, component_name="secondary")
+
+    assert gripper.grip_channel == 3
+    assert gripper.release_channel == 2
+
+
+def test_injected_control_rejects_malformed_components_before_key_access(control):
+    """Malformed component entries fail during configurator-source validation."""
+    source = {"components": {"gripper": None}}
+
+    with pytest.raises(SourceError, match="Each component must have"):
+        Gripper(control, source)
+
+
+def test_injected_control_rejects_malformed_sensor_before_nested_access(control, config):
+    """Malformed nested sensor data is validated before sensor construction."""
+    config["components"]["gripper"]["sensor"] = ["not", "a", "mapping"]
+
+    with pytest.raises(ConfigValidationError, match="sensor must be a mapping"):
+        Gripper(control, config)
+
+
 # def test_status_accessors_return_constructor_values():
 #     """Status accessors expose values supplied during construction."""
 #     status = GripperStatus(7, "custom-grip", "custom-motion", "custom-position")
@@ -264,6 +314,53 @@ def test_factory_routes_sensor_reads_to_configured_input_module(monkeypatch, tmp
         pass
     gripper.close()
     controller.shutdown.assert_called_once()
+
+
+def test_config_backed_constructor_uses_runtime_and_closes_owned_control(monkeypatch):
+    class Output:
+        name = "e8do"
+
+        def write_channel(self, channel, value):
+            pass
+
+        def reset_channel(self, channel):
+            pass
+
+    class Controller:
+        def __init__(self, **kwargs):
+            self.modules = kwargs["modules"]
+            self.ip_address = kwargs["ip_address"]
+            self.shutdown = Mock()
+
+    def fake_import(path):
+        return SimpleNamespace(CpxE=Controller, CpxE8Do=Output)
+
+    monkeypatch.setattr("configurator.kernel.import_module", fake_import)
+    source = {
+        "components": {
+            "controller": {
+                "control_library": "cpx_io",
+                "control_system": "cpx_system",
+                "control_bus": "cpx_e",
+                "control_module": {"cpx_e": "CpxE"},
+                "modules": [{"e8do": "CpxE8Do"}],
+            },
+            "gripper": {
+                "control_signal_module": {"e8do": "CpxE8Do"},
+                "control_signal_channels": {"grip": 1, "release": 0},
+            },
+        }
+    }
+
+    gripper = Gripper(config=source, component_name="gripper", ip_address="192.168.0.10")
+
+    assert gripper.registry is not None
+    assert gripper._registry_owner is True
+    assert gripper._owned_control.ip_address == "192.168.0.10"
+    control = gripper._owned_control
+    gripper.close()
+    assert gripper.registry.closed is True
+    control.shutdown.assert_called_once_with()
 
 
 def test_factory_partial_failure_closes_control_once(monkeypatch, tmp_path):

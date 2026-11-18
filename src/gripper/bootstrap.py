@@ -14,6 +14,7 @@ from configurator import (
     NamespaceResolver,
     Registration,
     Registry,
+    RuntimeRegistry,
     SelectionError,
 )
 
@@ -194,6 +195,7 @@ def build_gripper_view(
     view: ComponentView,
     *,
     options: Mapping[str, Any] | None = None,
+    runtime: RuntimeRegistry | None = None,
     **_: Any,
 ) -> Gripper:
     """Build a gripper from a selected, validated configurator view."""
@@ -212,8 +214,11 @@ def build_gripper_view(
         controller_type = module_resolver.resolve(("cpx_io", *base, controller_submodule), controller_class)
         control = controller_type(ip_address=address, modules=modules)
         output = _select_output(control, view.data)
-        result = Gripper(output, _legacy_config(view, controller), sensor_control=control)
+        result = Gripper(output, _legacy_config(view, controller), component_name=view.name, sensor_control=control)
         result._owned_control = control
+        if runtime is not None:
+            result.registry = runtime
+            result._runtime_registry = runtime
         return result
     except Exception:
         if control is not None and hasattr(control, "shutdown"):

@@ -37,7 +37,7 @@ def main() -> None:
             raise RuntimeError(f"Contradictory sensor status after {label}")
         print(f"{label}: {status.get_position()}")
 
-    with Gripper.from_config(CONFIG_PATH, component_name="gripper_standalone") as gripper:
+    with Gripper(config=CONFIG_PATH, component_name="gripper_standalone") as gripper:
         gripper.release()
         report("released", gripper)
         gripper.grip()

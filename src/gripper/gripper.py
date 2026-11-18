@@ -6,15 +6,13 @@
 import logging
 import time
 from collections.abc import Mapping
+from pathlib import Path
 from typing import Any
 
 from gripper.config_adapter import ConfigValidationError
+from configurator import RuntimeRegistry, SourceError, load_source, normalize_root
 
 logger = logging.getLogger(__name__)
-
-
-class GripperFactoryError(RuntimeError):
-    """Raised when configured gripper construction fails."""
 
 
 class GripperSensor:
@@ -128,33 +126,72 @@ class Gripper:
     ``sensors via digital input``. Constructor does not create or close hardware resources.
     """
 
-    def __init__(self, control, config: Mapping[str, Any], component_name: str | None = None, sensor_control=None):
+    def __new__(
+        cls,
+        control=None,
+        config: Mapping[str, Any] | str | Path | None = None,
+        component_name: str | None = None,
+        sensor_control=None,
+        registry: RuntimeRegistry | None = None,
+        ip_address: str | None = None,
+    ):
+        """Resolve config-only construction through the shared runtime."""
+        if control is not None or config is None:
+            return super().__new__(cls)
+        name = component_name or "gripper"
+        options = {"ip_address": ip_address} if ip_address is not None else None
+        runtime = registry if registry is not None else RuntimeRegistry(config, options=options)
+        return runtime.resolve(name, "gripper", source=config if registry is not None else None, options=options)
+
+    def __init__(
+        self,
+        control=None,
+        config: Mapping[str, Any] | str | Path | None = None,
+        component_name: str | None = None,
+        sensor_control=None,
+        registry: RuntimeRegistry | None = None,
+        ip_address: str | None = None,
+    ):
         """Initialize gripper from normalized legacy-compatible config.
 
         Args:
-            control: Injected CPX control assembly.
-            config: Mapping with ``components.gripper`` and
-                ``control_signal_channels``. Optional ``sensor`` config maps
-                CPX-E16DI channels 0 and 1 to gripping and release states.
+            control: Injected Remote IO (presumed CPX-E/AP) control assembly.
+            config: Mapping, JSON string, or path to a configuration containing
+                the selected gripper component and ``control_signal_channels``.
+                Optional ``sensor`` config maps CPX-E16DI channels to states.
             component_name: Name of gripper component in config, used when multiple grippers are present.
             sensor_control: Optional controller assembly used for sensor module lookup.
+            registry: Shared runtime registry for config-backed construction; unused with injected control.
+            ip_address: Controller address override for config-backed construction; unused with injected control.
 
         Raises:
             KeyError: Required configuration field is absent.
             ValueError: Configured sensor module cannot be found.
         """
+        if getattr(self, "_runtime_registry", None) is not None:
+            return
         logger.debug("Gripper initialization started")
+        if config is None:
+            raise TypeError("Dependency-injected Gripper construction requires a config source")
         self.control = control
-        components = config["components"]
-        self.config = components.get("gripper", components.get(component_name))
-        if self.config is None and control is None:
-            raise KeyError("No instantiated control or valid config given.")
-        self.channels_config = self.config["control_signal_channels"]
+        self.config = self._load_component_config(config, component_name)
+        channels = self.config.get("control_signal_channels")
+        if not isinstance(channels, Mapping):
+            raise ConfigValidationError("control_signal_channels must be a mapping")
+        if "grip" not in channels or "release" not in channels:
+            raise ConfigValidationError("control_signal_channels must have 'grip' and 'release' keys")
+        self.channels_config = dict(channels)
         self.grip_channel = self.channels_config["grip"]
         self.release_channel = self.channels_config["release"]
+        # self.sensor = self._build_sensor(control)
+        if type(self.grip_channel) is not int or type(self.release_channel) is not int:
+            raise ConfigValidationError("grip/release channels must be integers")
         if self.grip_channel == self.release_channel:
             raise ValueError("grip and release channels must be distinct")
         self._owned_control = None
+        self.registry: RuntimeRegistry | None = None
+        self._runtime_registry: RuntimeRegistry | None = None
+        self._registry_owner = False
         self._sensor_control = sensor_control or control
         self.sensor = self._build_sensor(self._sensor_control)
         logger.info(
@@ -164,18 +201,81 @@ class Gripper:
             self.sensor is not None,
         )
 
+    @staticmethod
+    def _load_component_config(source: Mapping[str, Any] | str | Path, component_name: str | None) -> dict[str, Any]:
+        """Load, normalize, and select a validated gripper component mapping."""
+        raw, _ = load_source(source)
+        normalized = normalize_root(raw)
+        components = normalized.get("components")
+        if not isinstance(components, Mapping):
+            raise SourceError(
+                "Configuration must contain a components mapping",
+                code="MISSING_COMPONENTS",
+                path="components",
+            )
+        if any(
+            not isinstance(name, str) or not isinstance(component, Mapping) for name, component in components.items()
+        ):
+            raise SourceError(
+                "Each component must have a string name and mapping value",
+                code="MALFORMED_COMPONENTS",
+                path="components",
+            )
+
+        selected_name = component_name or "gripper"
+        selected = components.get(selected_name)
+        if not isinstance(selected, Mapping):
+            raise SourceError(
+                f"Unknown or malformed gripper component {selected_name!r}",
+                code="UNKNOWN_COMPONENT",
+                component_name=selected_name,
+                path=f"components.{selected_name}",
+                expected="an existing component mapping",
+                actual=type(selected).__name__ if selected is not None else None,
+            )
+        selected_config = dict(selected)
+        sensor = selected_config.get("sensor")
+        if sensor is not None:
+            if not isinstance(sensor, Mapping):
+                raise ConfigValidationError("sensor must be a mapping")
+            module_spec = sensor.get("control_signal_module")
+            if (
+                not isinstance(module_spec, Mapping)
+                or len(module_spec) != 1
+                or any(not isinstance(key, str) or not isinstance(value, str) for key, value in module_spec.items())
+            ):
+                raise ConfigValidationError("Sensor control_signal_module must contain exactly one module mapping")
+            sensor_channels = sensor.get("control_signal_channels")
+            if not isinstance(sensor_channels, Mapping):
+                raise ConfigValidationError("Sensor control_signal_channels must be a mapping")
+            if "grip" not in sensor_channels or "release" not in sensor_channels:
+                raise ConfigValidationError("Sensor control_signal_channels must have 'grip' and 'release' keys")
+            if any(type(sensor_channels[key]) is not int for key in ("grip", "release")):
+                raise ConfigValidationError("Sensor grip/release channels must be integers")
+        return selected_config
+
     @classmethod
-    def from_config(cls, source, component_name: str | None = None, ip_address: str | None = None):
-        """Delegate legacy or Spec 3.0 configuration to the configurator bootstrap."""
+    def from_config(
+        cls,
+        source,
+        component_name: str | None = None,
+        ip_address: str | None = None,
+        registry: RuntimeRegistry | None = None,
+    ):
+        """Construct from parsed configuration, optionally joining a runtime."""
         ## TODO: AP module has autorecognition, so explicit IOs are not clear except from some kind of info or other config. Need this to bootstrap and understand system topology of actuators, sensors, etc.
         # TODO: COnfig options: AP still positional in terms of IO modules, this is how the config shuold be structured, avoid hardcoding indices for controls
         # TODO: Map :  cpx.module[index].set_channel(other index) -> human understandable methods/verbs
-
-        from gripper.bootstrap import bootstrap_gripper
+        # TODO: Remove this method/make it unnecessary
         from configurator import BuilderError, ConfiguratorError, ValidationError
 
         try:
-            return bootstrap_gripper(source, component_name=component_name, ip_address=ip_address)
+            return cls(
+                config=source,
+                component_name=component_name,
+                registry=registry,
+                ip_address=ip_address,
+            )
         except ValidationError as exc:
             cause = exc.cause
             if isinstance(cause, ConfigValidationError):
@@ -192,6 +292,10 @@ class Gripper:
 
     def close(self):
         """Shut down CPX control when factory created it."""
+        if self._runtime_registry is not None:
+            if self._registry_owner:
+                self._runtime_registry.close()
+            return
         result = getattr(self, "_bootstrap_result", None)
         if result is not None:
             self._bootstrap_result = None
