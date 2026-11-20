@@ -5,6 +5,7 @@
 
 import logging
 import time
+import warnings
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,10 @@ from gripper.config_adapter import ConfigValidationError
 from configurator import RuntimeRegistry, SourceError, load_source, normalize_root
 
 logger = logging.getLogger(__name__)
+
+
+class GripperFactoryError(RuntimeError):
+    """Raised when configurator-backed gripper construction fails."""
 
 
 class GripperSensor:
@@ -262,7 +267,28 @@ class Gripper:
         ip_address: str | None = None,
         registry: RuntimeRegistry | None = None,
     ):
-        """Construct from parsed configuration, optionally joining a runtime."""
+        """Construct from configuration as a deprecated compatibility delegate.
+
+        Args:
+            source: Mapping, JSON string, or path to a gripper configuration.
+            component_name: Optional selected gripper component name.
+            ip_address: Optional controller address override.
+            registry: Optional shared configurator runtime.
+
+        Returns:
+            Configurator-built gripper instance.
+
+        Raises:
+            ConfigValidationError: If selected gripper configuration is invalid.
+            GripperFactoryError: If provider resolution or construction fails.
+        """
+        warnings.warn(
+            "Gripper.from_config is deprecated and is planned for removal no earlier than "
+            "festo-dev-gripper 0.7.0, after two published releases containing this warning. "
+            "Use Configurator.bootstrap with Registry.compose(gripper_registration()) instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         ## TODO: AP module has autorecognition, so explicit IOs are not clear except from some kind of info or other config. Need this to bootstrap and understand system topology of actuators, sensors, etc.
         # TODO: COnfig options: AP still positional in terms of IO modules, this is how the config shuold be structured, avoid hardcoding indices for controls
         # TODO: Map :  cpx.module[index].set_channel(other index) -> human understandable methods/verbs

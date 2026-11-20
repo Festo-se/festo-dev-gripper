@@ -172,8 +172,8 @@ def _resolve_ip_address(controller: Mapping[str, Any], options: Mapping[str, Any
     return _DEFAULT_IP
 
 
-def _legacy_config(view: ComponentView, controller: Mapping[str, Any]) -> dict[str, Any]:
-    return {"components": {"controller": dict(controller), "gripper": dict(view.data)}}
+def _selected_component_config(view: ComponentView) -> dict[str, Any]:
+    return {"components": {view.name: dict(view.data)}}
 
 
 def _select_output(control: Any, component: Mapping[str, Any]):
@@ -214,7 +214,7 @@ def build_gripper_view(
         controller_type = module_resolver.resolve(("cpx_io", *base, controller_submodule), controller_class)
         control = controller_type(ip_address=address, modules=modules)
         output = _select_output(control, view.data)
-        result = Gripper(output, _legacy_config(view, controller), component_name=view.name, sensor_control=control)
+        result = Gripper(output, _selected_component_config(view), component_name=view.name, sensor_control=control)
         result._owned_control = control
         if runtime is not None:
             result.registry = runtime

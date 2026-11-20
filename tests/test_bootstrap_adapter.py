@@ -179,6 +179,44 @@ def test_named_selection_is_forwarded_to_bootstrap(monkeypatch):
     assert captured["selector"] == {"type": "gripper", "require_single": True, "name": "first"}
 
 
+def test_named_selection_builds_the_selected_component_with_real_builder(monkeypatch):
+    class CpxE8Do:
+        name = "e8do"
+
+        def write_channel(self, channel, value):
+            pass
+
+        def reset_channel(self, channel):
+            pass
+
+    class Controller:
+        def __init__(self, **kwargs):
+            self.modules = kwargs["modules"]
+
+        def shutdown(self):
+            pass
+
+    def fake_import(path):
+        if path.endswith(".cpx_e"):
+            return SimpleNamespace(CpxE=Controller)
+        return SimpleNamespace(CpxE8Do=CpxE8Do)
+
+    monkeypatch.setattr("configurator.kernel.import_module", fake_import)
+    source = {
+        "components": {
+            "controller": _controller(),
+            "first": _component(control_signal_channels={"grip": 1, "release": 0}),
+            "second": _component(control_signal_channels={"grip": 3, "release": 2}),
+        }
+    }
+
+    gripper = bootstrap_gripper(source, component_name="second")
+
+    assert gripper.grip_channel == 3
+    assert gripper.release_channel == 2
+    gripper.close()
+
+
 def test_bootstrap_path_does_not_use_legacy_file_loading(monkeypatch, tmp_path):
     class Output:
         name = "e8do"

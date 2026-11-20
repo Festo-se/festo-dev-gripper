@@ -31,9 +31,12 @@ with Configurator.bootstrap(
     print(gripper.get_status().get_position())
 ```
 
-`Gripper.from_config` and `load_config` remain compatibility delegates for one
-release cycle. New config-driven consumers should call `Configurator.bootstrap`
-with an explicit gripper registration as shown above.
+`Gripper.from_config` and `load_config` are deprecated compatibility delegates.
+They emit `DeprecationWarning` and are planned for removal no earlier than
+`festo-dev-gripper` 0.7.0, after two published releases containing the warning.
+For runtime construction, use `Configurator.bootstrap` with an explicit gripper
+registration as shown above. Use `GripperConfigAdapter` only when legacy data
+translation is specifically required.
 
 Configuration selects output and sensor modules:
 

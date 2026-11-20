@@ -4,6 +4,7 @@
 """Config adapter for backward compatibility and schema validation."""
 
 import logging
+import warnings
 from pathlib import Path
 from typing import Any, Dict, Union
 
@@ -12,7 +13,7 @@ from configurator import SourceError, load_source
 logger = logging.getLogger(__name__)
 
 
-class ConfigValidationError(Exception):
+class ConfigValidationError(ValueError):
     """Raised when config schema validation fails."""
 
     pass
@@ -307,6 +308,13 @@ def load_config(config_path: Union[str, Path], component_name: str | None = None
         ConfigValidationError: Schema validation fails
         FileNotFoundError: Config file not found
     """
+    warnings.warn(
+        "gripper.config_adapter.load_config is deprecated and is planned for removal no earlier than "
+        "festo-dev-gripper 0.7.0, after two published releases containing this warning. "
+        "Use GripperConfigAdapter for legacy data translation or Configurator.bootstrap for runtime construction.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
     logger.info("Gripper config load requested: path=%s", config_path)
     adapter = GripperConfigAdapter(config_path, component_name=component_name)
     config = adapter.get_gripper_config()

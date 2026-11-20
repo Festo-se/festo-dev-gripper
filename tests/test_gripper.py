@@ -82,6 +82,8 @@ def test_command_resets_outputs_when_write_fails(monkeypatch, control, config):
         ((0,),),
         ((1,),),
     ]
+
+
 def test_sensor_reads_configured_channels():
     """Sensor maps configured CPX-E16DI channels to semantic readings."""
     module = Mock()
@@ -222,7 +224,7 @@ def test_injected_control_rejects_malformed_sensor_before_nested_access(control,
 # def test_status_accessors_return_constructor_values():
 #     """Status accessors expose values supplied during construction."""
 #     status = GripperStatus(7, "custom-grip", "custom-motion", "custom-position")
-# 
+#
 #     assert status.get_gripping_state() == "custom-grip"
 #     assert status.get_movement_state() == "custom-motion"
 #     assert status.get_position() == "custom-position"
@@ -407,6 +409,44 @@ def test_factory_partial_failure_closes_control_once(monkeypatch, tmp_path):
     assert "Configured output module not found" in str(error.value.__cause__.cause)
     assert len(controls) == 1
     controls[0].shutdown.assert_called_once()
+
+
+def test_from_config_warns_with_migration_target(monkeypatch):
+    from gripper.gripper import Gripper
+
+    runtime = Mock()
+    instance = object()
+    runtime.resolve.return_value = instance
+    monkeypatch.setattr("gripper.gripper.RuntimeRegistry", lambda source, options=None: runtime)
+
+    with pytest.warns(DeprecationWarning, match=r"0\.7\.0.*Configurator\.bootstrap"):
+        assert Gripper.from_config({"components": {}}, component_name="gripper") is instance
+
+
+def test_load_config_warns_with_migration_target(tmp_path):
+    from gripper.config_adapter import load_config
+
+    config_path = tmp_path / "legacy-config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "components": {
+                    "controller": {
+                        "control_library": "cpx_io",
+                        "control_system": "cpx_system",
+                        "control_bus": "cpx_e",
+                        "control_module": {"cpx_e": "CpxE"},
+                        "modules": [{"e8do": "CpxE8Do"}],
+                    },
+                    "gripper": {"control_signal_channels": {"grip": 1, "release": 0}},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.warns(DeprecationWarning, match=r"0\.7\.0.*GripperConfigAdapter"):
+        load_config(config_path)
 
 
 def test_duplicate_output_channels_are_rejected(control, config):
